@@ -160,13 +160,7 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 		const exaApiKeyConfigured = hasExaApiKey();
 		try {
 			const result = await searchWithExa(query, options);
-			if (result && "exhausted" in result) {
-				throw new Error(
-					"Exa monthly free tier exhausted (1,000 requests). Resets next month.\n" +
-					"  Use provider: 'perplexity' or 'gemini', or upgrade at exa.ai/pricing"
-				);
-			}
-			if (result && "answer" in result) return { ...result, provider: "exa" };
+			if (result) return { ...result, provider: "exa" };
 			if (exaApiKeyConfigured) {
 				throw new Error("Exa search returned no results.");
 			}
@@ -195,7 +189,7 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 	if (provider !== "exa" && isExaAvailable()) {
 		try {
 			const result = await searchWithExa(query, options);
-			if (result && "answer" in result) return { ...result, provider: "exa" };
+			if (result) return { ...result, provider: "exa" };
 		} catch (err) {
 			if (isAbortError(err)) throw err;
 			fallbackErrors.push(`Exa: ${errorMessage(err)}`);

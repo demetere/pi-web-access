@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const braveModuleUrl = new URL("../brave.ts", import.meta.url).href;
+const exaModuleUrl = new URL("../exa.ts", import.meta.url).href;
 const openaiModuleUrl = new URL("../openai-search.ts", import.meta.url).href;
 const tavilyModuleUrl = new URL("../tavily.ts", import.meta.url).href;
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
@@ -166,6 +167,52 @@ test("auto provider falls through to Tavily after unavailable earlier providers"
 	assert.ok(output.calls.includes("https://api.tavily.com/search"));
 	assert.equal(output.result.provider, "tavily");
 	assert.equal(output.result.answer, "Auto Tavily answer");
+});
+
+test("Exa direct API key ignores full legacy usage counter", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-exa-paid-"));
+	const child = runChild(`
+		const dir = ${JSON.stringify(home)};
+		const { readFileSync, writeFileSync } = await import("node:fs");
+		writeFileSync(dir + "/web-search.json", JSON.stringify({ exaApiKey: "exa-paid-key" }));
+		writeFileSync(dir + "/exa-usage.json", JSON.stringify({ month: new Date().toISOString().slice(0, 7), count: 1000 }));
+
+		let capturedUrl = "";
+		let capturedHeaders = null;
+		globalThis.fetch = async (url, init) => {
+			capturedUrl = String(url);
+			capturedHeaders = init.headers;
+			return new Response(JSON.stringify({
+				answer: "Paid Exa answer",
+				citations: [{ title: "Exa Docs", url: "https://exa.ai/docs" }],
+			}), { status: 200, headers: { "content-type": "application/json" } });
+		};
+
+		const { isExaAvailable, searchWithExa } = await import(${JSON.stringify(exaModuleUrl)});
+		const available = isExaAvailable();
+		const result = await searchWithExa("paid exa query");
+		const usage = JSON.parse(readFileSync(dir + "/exa-usage.json", "utf8"));
+		console.log(JSON.stringify({
+			available,
+			capturedUrl,
+			apiKey: capturedHeaders["x-api-key"],
+			result,
+			usage,
+		}));
+	`, {
+		HOME: home,
+		USERPROFILE: home,
+		PI_CODING_AGENT_DIR: home,
+	});
+
+	assert.equal(child.status, 0, child.stderr);
+	const output = JSON.parse(child.stdout.trim());
+	assert.equal(output.available, true);
+	assert.equal(output.capturedUrl, "https://api.exa.ai/answer");
+	assert.equal(output.apiKey, "exa-paid-key");
+	assert.equal(output.result.answer, "Paid Exa answer");
+	assert.deepEqual(output.result.results, [{ title: "Exa Docs", url: "https://exa.ai/docs", snippet: "" }]);
+	assert.equal(output.usage.count, 1000);
 });
 
 test("OpenAI search requires web_search and maps domain filters", async () => {
