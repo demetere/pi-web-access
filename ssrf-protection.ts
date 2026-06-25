@@ -4,8 +4,8 @@ import net from "node:net";
 const DEFAULT_MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
-type LookupAddress = { address: string; family: number };
-type Lookup = (hostname: string) => Promise<LookupAddress[]>;
+export type LookupAddress = { address: string; family: number };
+export type Lookup = (hostname: string) => Promise<LookupAddress[]>;
 type Fetch = typeof fetch;
 
 interface ValidationOptions {
@@ -200,6 +200,9 @@ function parseCidr(raw: string): ParsedCidr | null {
 	const slash = raw.lastIndexOf("/");
 	const addrPart = slash >= 0 ? raw.slice(0, slash) : raw;
 	const prefixPart = slash >= 0 ? raw.slice(slash + 1) : null;
+	// A slash must be followed by digits. Number("")/Number(" ") are 0, which
+	// would silently turn "198.18.0.0/" into /0 and exempt every address.
+	if (prefixPart !== null && !/^\d+$/.test(prefixPart)) return null;
 	const version = net.isIP(addrPart);
 
 	if (version === 4) {

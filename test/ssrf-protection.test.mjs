@@ -150,6 +150,25 @@ test("allowRanges accepts a bare host (no prefix) and treats it as /32", async (
 	assert.equal((await validateRemoteUrl("http://198.18.1.2/", { allowRanges: ["198.18.1.2"] })).hostname, "198.18.1.2");
 });
 
+test("allowRanges rejects an empty or non-numeric CIDR prefix instead of treating it as /0", async () => {
+	// Regression: a trailing slash with no prefix (e.g. "198.18.0.0/") must NOT
+	// become /0, which would exempt every address from the SSRF guard.
+	for (const bad of ["198.18.0.0/", "198.18.0.0/ ", "fd00::/", "10.0.0.0/abc", "10.0.0.0/ 8"]) {
+		await assert.rejects(
+			validateRemoteUrl("http://198.18.0.5/", { allowRanges: [bad] }),
+			/Invalid CIDR notation in ssrf\.allowRanges/,
+			`${bad} should be rejected`,
+		);
+	}
+
+	// The dangerous outcome is prevented: a metadata/private IP is not exempted
+	// by a malformed "/" entry; the misconfiguration surfaces as an error.
+	await assert.rejects(
+		validateRemoteUrl("http://169.254.169.254/", { allowRanges: ["198.18.0.0/"] }),
+		/Invalid CIDR notation in ssrf\.allowRanges/,
+	);
+});
+
 test("invalid allowRanges entries throw a descriptive error", async () => {
 	for (const bad of ["not-an-ip", "198.18.0.0/33", "198.18.0.0/-1", "999.0.0.0/8", "fd00::/129"]) {
 		await assert.rejects(
